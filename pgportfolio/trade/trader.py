@@ -118,6 +118,4 @@ class Trader:
                 while self._steps < self._total_steps:
                     self.__trade_body()
         finally:
-            if self._agent_type=="nn":
-                self._agent.recycle()
             self.finish_trading()

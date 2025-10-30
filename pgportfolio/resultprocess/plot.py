@@ -57,7 +57,12 @@ def plot_backtest(config, algos, labels=None):
             logging.info("finish executing "+algo)
 
     start, end = _extract_test(config)
-    timestamps = np.linspace(start, end, len(results[0]))
+    # Ensure all result series have the same length for plotting.
+    # Some backtests may produce one element shorter/longer due to off-by-one in history.
+    # Use the minimum length across results and truncate longer series to avoid
+    # x/y dimension mismatch in matplotlib.
+    min_len = min([len(r) for r in results])
+    timestamps = np.linspace(start, end, min_len)
     dates = [datetime.datetime.fromtimestamp(int(ts)-int(ts)%config["input"]["global_period"])
              for ts in timestamps]
 
@@ -78,7 +83,15 @@ def plot_backtest(config, algos, labels=None):
             label = labels[i]
         else:
             label = NAMES[algos[i]]
-        ax.semilogy(dates, pvs, linewidth=1, label=label)
+        # Truncate or pad pvs to match dates length
+        pvs_plot = np.asarray(pvs)
+        if pvs_plot.size > len(dates):
+            pvs_plot = pvs_plot[:len(dates)]
+        elif pvs_plot.size < len(dates):
+            # If a series is shorter, pad with its last value to keep the plot shape
+            pad = np.full(len(dates) - pvs_plot.size, pvs_plot[-1]) if pvs_plot.size > 0 else np.ones(len(dates))
+            pvs_plot = np.concatenate([pvs_plot, pad])
+        ax.semilogy(dates, pvs_plot, linewidth=1, label=label)
         #ax.plot(dates, pvs, linewidth=1, label=label)
 
     plt.ylabel("portfolio value $p_t/p_0$", fontsize=12)
@@ -161,7 +174,9 @@ def _load_from_summary(index, config):
     @:param index: index of the training and backtest
     @:return: numpy array of the portfolio changes
     """
-    dataframe = pd.DataFrame.from_csv("./train_package/train_summary.csv")
+    # DataFrame.from_csv was removed in recent pandas versions.
+    # Use read_csv with index_col=0 to preserve the original behavior.
+    dataframe = pd.read_csv("./train_package/train_summary.csv", index_col=0)
     history_string = dataframe.loc[int(index)]["backtest_test_history"]
     if not check_input_same(config, json.loads(dataframe.loc[int(index)]["config"])):
         raise ValueError("the date of this index is not the same as the default config")

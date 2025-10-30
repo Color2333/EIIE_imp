@@ -87,10 +87,15 @@ def get_type_list(feature_number):
     return type_list
 
 
-def panel2array(panel):
-    """convert the panel to datatensor (numpy array) without btc
+def panel2array(df):
+    """convert the MultiIndex DataFrame to datatensor (numpy array) without btc
+    :param df: MultiIndex DataFrame with index=time, columns=(feature, coin)
     """
-    without_btc = np.transpose(panel.values, axes=(2, 0, 1))
+    num_time = len(df.index)
+    num_features = len(df.columns.levels[0])
+    num_coins = len(df.columns.levels[1])
+    reshaped_array = df.values.reshape(num_time, num_features, num_coins)
+    without_btc = np.transpose(reshaped_array, axes=(1, 2, 0))
     return without_btc
 
 
@@ -111,18 +116,22 @@ def get_volume_forward(time_span, portion, portion_reversed):
     return volume_forward
 
 
-def panel_fillna(panel, type="bfill"):
+def panel_fillna(df, fill_type="bfill"):
     """
-    fill nan along the 3rd axis
-    :param panel: the panel to be filled
-    :param type: bfill or ffill
+    Fill NaN values in a MultiIndex DataFrame along the time axis (rows).
+    :param df: The MultiIndex DataFrame to be filled. Columns are (feature, coin), index is time.
+    :param fill_type: 'bfill', 'ffill', or 'both'.
     """
-    frames = {}
-    for item in panel.items:
-        if type == "both":
-            frames[item] = panel.loc[item].fillna(axis=1, method="bfill").\
-                fillna(axis=1, method="ffill")
+    if fill_type == "both":
+        # Use explicit bfill/ffill to avoid FutureWarning about method kwarg
+        df_filled = df.bfill().ffill()
+    else:
+        if fill_type == "bfill":
+            df_filled = df.bfill()
+        elif fill_type == "ffill":
+            df_filled = df.ffill()
         else:
-            frames[item] = panel.loc[item].fillna(axis=1, method=type)
-    return pd.Panel(frames)
+            # fall back to pandas' fillna for literal values
+            df_filled = df.fillna(fill_type)
+    return df_filled
 

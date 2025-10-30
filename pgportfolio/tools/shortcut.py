@@ -31,8 +31,14 @@ def _construct_agent(algo):
         agent = ALGOS[algo]()
         agent_type = "traditional"
         net_dir = None
+    elif algo == "pytorch_nn_default":
+        from pgportfolio.tools.configprocess import load_config
+        config = load_config()
+        agent = None
+        agent_type = "nn"
+        net_dir = None
     else:
         message = "The algorithm name "+algo+" is not support. Supported algos " \
-                                             "are " + str(list(ALGOS.keys()))
+                                             "are " + str(list(ALGOS.keys())) + ", pytorch_nn_default, or a digit for a trained NN."
         raise LookupError(message)
     return agent, agent_type, net_dir

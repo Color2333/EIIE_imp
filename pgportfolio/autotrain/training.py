@@ -6,7 +6,11 @@ import logging
 import os
 import time
 from multiprocessing import Process
-from pgportfolio.learn.tradertrainer import TraderTrainer
+try:
+    # prefer PyTorch trainer if available
+    from pgportfolio.learn_pytorch.tradertrainer_pt import TraderTrainer
+except Exception:
+    from pgportfolio.learn.tradertrainer import TraderTrainer
 from pgportfolio.tools.configprocess import load_config
 
 

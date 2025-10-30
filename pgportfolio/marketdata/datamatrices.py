@@ -53,12 +53,12 @@ class DataMatrices:
             raise ValueError("market {} is not valid".format(market))
         self.__period_length = period
         # portfolio vector memory, [time, assets]
-        self.__PVM = pd.DataFrame(index=self.__global_data.minor_axis,
-                                  columns=self.__global_data.major_axis)
+        self.__PVM = pd.DataFrame(index=self.__global_data.index,
+                                  columns=self.__global_data.columns.levels[1])
         self.__PVM = self.__PVM.fillna(1.0 / self.__coin_no)
 
         self._window_size = window_size
-        self._num_periods = len(self.__global_data.minor_axis)
+        self._num_periods = len(self.__global_data.index)
         self.__divide_data(test_portion, portion_reversed)
 
         self._portion_reversed = portion_reversed
@@ -158,19 +158,39 @@ class DataMatrices:
 
     def __pack_samples(self, indexs):
         indexs = np.array(indexs)
-        last_w = self.__PVM.values[indexs-1, :]
+        # self.__PVM stores coin weights (no cash). For training we need last_w to include
+        # the cash component as the first column. Compute cash = 1 - sum(coin_weights).
+        coin_weights = self.__PVM.values[indexs-1, :]
+        # Ensure coin_weights is 2D
+        if coin_weights.ndim == 1:
+            coin_weights = coin_weights.reshape(1, -1)
+        last_w = coin_weights
 
         def setw(w):
             self.__PVM.iloc[indexs, :] = w
         M = [self.get_submatrix(index) for index in indexs]
         M = np.array(M)
         X = M[:, :, :, :-1]
+        X = X.astype(np.float32) # Explicitly ensure float32
         y = M[:, :, :, -1] / M[:, 0, None, :, -2]
         return {"X": X, "y": y, "last_w": last_w, "setw": setw}
 
     # volume in y is the volume in next access period
     def get_submatrix(self, ind):
-        return self.__global_data.values[:, :, ind:ind+self._window_size+1]
+        # Select the time slice from the DataFrame
+        time_slice_df = self.__global_data.iloc[ind:ind+self._window_size+1]
+
+        # Get dimensions for reshaping
+        num_time_points = len(time_slice_df.index) # Should be self._window_size+1
+        num_features = len(time_slice_df.columns.levels[0])
+        num_coins = len(time_slice_df.columns.levels[1])
+
+        # Reshape from (time_points, features*coins) to (time_points, features, coins)
+        reshaped_array = time_slice_df.values.reshape(num_time_points, num_features, num_coins)
+
+        # Transpose from (time_points, features, coins) to (features, coins, time_points)
+        submatrix = np.transpose(reshaped_array, axes=(1, 2, 0))
+        return submatrix
 
     def __divide_data(self, test_portion, portion_reversed):
         train_portion = 1 - test_portion

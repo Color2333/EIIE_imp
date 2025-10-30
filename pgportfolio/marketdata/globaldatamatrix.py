@@ -70,7 +70,8 @@ class HistoryManager:
 
         time_index = pd.to_datetime(list(range(start, end+1, period)),unit='s')
         
-        panel = pd.Panel(items=features, major_axis=coins, minor_axis=time_index, dtype=np.float32)
+        multi_cols = pd.MultiIndex.from_product([features, coins], names=['feature', 'coin'])
+        panel = pd.DataFrame(index=time_index, columns=multi_cols, dtype=np.float32)
 
         connection = sqlite3.connect(DATABASE_DIR)
         try:
@@ -112,10 +113,10 @@ class HistoryManager:
                         msg = ("The feature %s is not supported" % feature)
                         logging.error(msg)
                         raise ValueError(msg)
-                    serial_data = pd.read_sql_query(sql, con=connection,
-                                                    parse_dates=["date_norm"],
-                                                    index_col="date_norm")
-                    panel.loc[feature, coin, serial_data.index] = serial_data.squeeze()
+                    serial_data = pd.read_sql_query(sql, con=connection,\
+                                                    parse_dates=["date_norm"],\
+                                                    index_col="date_norm").astype(np.float32)
+                    panel.loc[serial_data.index, (feature, coin)] = serial_data.squeeze()
                     panel = panel_fillna(panel, "both")
         finally:
             connection.commit()
@@ -147,6 +148,7 @@ class HistoryManager:
         else:
             coins = list(self._coin_list.topNVolume(n=self._coin_number).index)
         logging.debug("Selected coins are: "+str(coins))
+
         return coins
 
     def __checkperiod(self, period):

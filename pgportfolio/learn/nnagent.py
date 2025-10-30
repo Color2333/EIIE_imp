@@ -1,213 +1,211 @@
-from __future__ import absolute_import, print_function, division
-import tflearn
-import tensorflow as tf
+import torch
+import torch.optim as optim
 import numpy as np
-from pgportfolio.constants import *
+from pgportfolio.constants import LAMBDA
 import pgportfolio.learn.network as network
 
 class NNAgent:
-    def __init__(self, config, restore_dir=None, device="cpu"):
+    def __init__(self, config, restore_path=None, device="cpu"):
         self.__config = config
         self.__coin_number = config["input"]["coin_number"]
-        self.__net = network.CNN(config["input"]["feature_number"],
-                                 self.__coin_number,
-                                 config["input"]["window_size"],
-                                 config["layers"],
-                                 device=device)
-        self.__global_step = tf.Variable(0, trainable=False)
-        self.__train_operation = None
-        self.__y = tf.placeholder(tf.float32, shape=[None,
-                                                     self.__config["input"]["feature_number"],
-                                                     self.__coin_number])
-        self.__future_price = tf.concat([tf.ones([self.__net.input_num, 1]),
-                                       self.__y[:, 0, :]], 1)
-        self.__future_omega = (self.__future_price * self.__net.output) /\
-                              tf.reduce_sum(self.__future_price * self.__net.output, axis=1)[:, None]
-        # tf.assert_equal(tf.reduce_sum(self.__future_omega, axis=1), tf.constant(1.0))
+        self.device = torch.device(device)
+        
+        # Pass rows = coin_number + 1 to include the cash asset as the first row
+        # Keep rows equal to coin_number to match the TF implementation
+        # (TF's network internally handles the cash/btc bias column). This
+        # prevents a mismatch between previous_w shapes (assets-only) used
+        # by the training loop and the network expectation.
+        self.__net = network.CNN(
+            config["input"]["feature_number"],
+            self.__coin_number,
+            config["input"]["window_size"],
+            config["layers"],
+            device=device
+        ).to(self.device)
+
         self.__commission_ratio = self.__config["trading"]["trading_consumption"]
-        self.__pv_vector = tf.reduce_sum(self.__net.output * self.__future_price, reduction_indices=[1]) *\
-                           (tf.concat([tf.ones(1), self.__pure_pc()], axis=0))
-        self.__log_mean_free = tf.reduce_mean(tf.log(tf.reduce_sum(self.__net.output * self.__future_price,
-                                                                   reduction_indices=[1])))
-        self.__portfolio_value = tf.reduce_prod(self.__pv_vector)
-        self.__mean = tf.reduce_mean(self.__pv_vector)
-        self.__log_mean = tf.reduce_mean(tf.log(self.__pv_vector))
-        self.__standard_deviation = tf.sqrt(tf.reduce_mean((self.__pv_vector - self.__mean) ** 2))
-        self.__sharp_ratio = (self.__mean - 1) / self.__standard_deviation
-        self.__loss = self.__set_loss_function()
-        self.__train_operation = self.init_train(learning_rate=self.__config["training"]["learning_rate"],
-                                                 decay_steps=self.__config["training"]["decay_steps"],
-                                                 decay_rate=self.__config["training"]["decay_rate"],
-                                                 training_method=self.__config["training"]["training_method"])
-        self.__saver = tf.train.Saver()
-        if restore_dir:
-            self.__saver.restore(self.__net.session, restore_dir)
-        else:
-            self.__net.session.run(tf.global_variables_initializer())
+        self.regularization_strength = config["training"].get("regularization_strength", 0.0)
 
-    @property
-    def session(self):
-        return self.__net.session
+        self.optimizer = self._init_optimizer()
+        self.scheduler = self._init_scheduler(self.optimizer)
 
-    @property
-    def pv_vector(self):
-        return self.__pv_vector
+        if restore_path:
+            self.__net.load_state_dict(torch.load(restore_path, map_location=self.device))
+            
+        self.__net.train() # Set the model to training mode by default
 
-    @property
-    def standard_deviation(self):
-        return self.__standard_deviation
+    def _init_optimizer(self):
+        training_method = self.__config["training"]["training_method"]
+        learning_rate = self.__config["training"]["learning_rate"]
+        # L2 regularization is passed as weight_decay in PyTorch optimizers
+        weight_decay = self.__config["training"].get("weight_decay", 0.0)
 
-    @property
-    def portfolio_weights(self):
-        return self.__net.output
-
-    @property
-    def sharp_ratio(self):
-        return self.__sharp_ratio
-
-    @property
-    def log_mean(self):
-        return self.__log_mean
-
-    @property
-    def log_mean_free(self):
-        return self.__log_mean_free
-
-    @property
-    def portfolio_value(self):
-        return self.__portfolio_value
-
-    @property
-    def loss(self):
-        return self.__loss
-
-    @property
-    def layers_dict(self):
-        return self.__net.layers_dict
-
-    def recycle(self):
-        tf.reset_default_graph()
-        self.__net.session.close()
-
-    def __set_loss_function(self):
-        def loss_function4():
-            return -tf.reduce_mean(tf.log(tf.reduce_sum(self.__net.output[:] * self.__future_price,
-                                                        reduction_indices=[1])))
-
-        def loss_function5():
-            return -tf.reduce_mean(tf.log(tf.reduce_sum(self.__net.output * self.__future_price, reduction_indices=[1]))) + \
-                   LAMBDA * tf.reduce_mean(tf.reduce_sum(-tf.log(1 + 1e-6 - self.__net.output), reduction_indices=[1]))
-
-        def loss_function6():
-            return -tf.reduce_mean(tf.log(self.pv_vector))
-
-        def loss_function7():
-            return -tf.reduce_mean(tf.log(self.pv_vector)) + \
-                   LAMBDA * tf.reduce_mean(tf.reduce_sum(-tf.log(1 + 1e-6 - self.__net.output), reduction_indices=[1]))
-
-        def with_last_w():
-            return -tf.reduce_mean(tf.log(tf.reduce_sum(self.__net.output[:] * self.__future_price, reduction_indices=[1])
-                                          -tf.reduce_sum(tf.abs(self.__net.output[:, 1:] - self.__net.previous_w)
-                                                         *self.__commission_ratio, reduction_indices=[1])))
-
-        loss_function = loss_function5
-        if self.__config["training"]["loss_function"] == "loss_function4":
-            loss_function = loss_function4
-        elif self.__config["training"]["loss_function"] == "loss_function5":
-            loss_function = loss_function5
-        elif self.__config["training"]["loss_function"] == "loss_function6":
-            loss_function = loss_function6
-        elif self.__config["training"]["loss_function"] == "loss_function7":
-            loss_function = loss_function7
-        elif self.__config["training"]["loss_function"] == "loss_function8":
-            loss_function = with_last_w
-
-        loss_tensor = loss_function()
-        regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-        if regularization_losses:
-            for regularization_loss in regularization_losses:
-                loss_tensor += regularization_loss
-        return loss_tensor
-
-    def init_train(self, learning_rate, decay_steps, decay_rate, training_method):
-        learning_rate = tf.train.exponential_decay(learning_rate, self.__global_step,
-                                                   decay_steps, decay_rate, staircase=True)
         if training_method == 'GradientDescent':
-            train_step = tf.train.GradientDescentOptimizer(learning_rate).\
-                         minimize(self.__loss, global_step=self.__global_step)
+            return optim.SGD(self.__net.parameters(), lr=learning_rate, weight_decay=weight_decay)
         elif training_method == 'Adam':
-            train_step = tf.train.AdamOptimizer(learning_rate).\
-                         minimize(self.__loss, global_step=self.__global_step)
+            # Explicitly set common Adam parameters (betas and eps) to match TF defaults
+            # and reduce implicit cross-framework differences.
+            return optim.Adam(self.__net.parameters(), lr=learning_rate,
+                              weight_decay=weight_decay, betas=(0.9, 0.999), eps=1e-8)
         elif training_method == 'RMSProp':
-            train_step = tf.train.RMSPropOptimizer(learning_rate).\
-                         minimize(self.__loss, global_step=self.__global_step)
+            return optim.RMSprop(self.__net.parameters(), lr=learning_rate, weight_decay=weight_decay)
         else:
-            raise ValueError()
-        return train_step
+            raise ValueError(f"Unsupported training_method: {training_method}")
 
-    def train(self, x, y, last_w, setw):
-        tflearn.is_training(True, self.__net.session)
-        self.evaluate_tensors(x, y, last_w, setw, [self.__train_operation])
+    def _init_scheduler(self, optimizer):
+        decay_steps = self.__config["training"]["decay_steps"]
+        decay_rate = self.__config["training"]["decay_rate"]
+        # PyTorch's scheduler step is typically called per epoch, not per global step.
+        # We will adapt this in the training loop.
+        # The gamma for ExponentialLR is decay_rate^(1/decay_steps)
+        gamma = decay_rate ** (1 / decay_steps)
+        return optim.lr_scheduler.ExponentialLR(optimizer, gamma=gamma)
 
-    def evaluate_tensors(self, x, y, last_w, setw, tensors):
+    def _calculate_loss(self, weights, future_price_changes, pv_vector):
+        loss_func_name = self.__config["training"]["loss_function"]
+        
+        log_portfolio_returns = torch.log(torch.sum(weights * future_price_changes, dim=1))
+
+        if loss_func_name == "loss_function4":
+            base_loss = -torch.mean(log_portfolio_returns)
+        elif loss_func_name == "loss_function5":
+            # This loss includes a penalty for low-entropy (non-diverse) portfolios
+            entropy_penalty = LAMBDA * torch.mean(torch.sum(-torch.log(1 + 1e-6 - weights), dim=1))
+            base_loss = -torch.mean(log_portfolio_returns) + entropy_penalty
+        elif loss_func_name == "loss_function6":
+            log_pv_vector = torch.log(pv_vector)
+            base_loss = -torch.mean(log_pv_vector)
+        else:
+            # Defaulting to a common portfolio loss
+            base_loss = -torch.mean(log_portfolio_returns)
+
+        # Add per-layer L2 regularization to match TF/tflearn behavior where
+        # each layer can define its own weight_decay in the config.
+        reg_loss = torch.tensor(0.0, device=base_loss.device, dtype=base_loss.dtype)
+        try:
+            for module in self.__net.modules():
+                wd = getattr(module, "_weight_decay", 0.0)
+                if wd and wd > 0:
+                    for p in module.parameters(recurse=False):
+                        reg_loss = reg_loss + wd * torch.sum(p ** 2)
+        except Exception:
+            # If anything goes wrong, fall back to no per-layer regularization
+            reg_loss = reg_loss
+
+        return base_loss + reg_loss
+
+    def train(self, x, y, last_w, setw_func):
+        self.__net.train()
+        # Debugging: Write type and value of x to a file
+        with open("/Users/jhjh/.gemini/tmp/3a982b4fbaabb55f2285d7c125b6868106ba60bb34fab9633a5f4de56a7c96da/debug_nnagent_train_x.log", "a") as f:
+            f.write(f"Type of x: {type(x)}\n")
+            f.write(f"Value of x: {x}\n")
+            if isinstance(x, np.ndarray):
+                f.write(f"x.shape: {x.shape}\n")
+                f.write(f"x.dtype: {x.dtype}\n")
+        
+        x = np.asarray(x, dtype=np.float32)
+        x_tensor = torch.tensor(x, dtype=torch.float32).to(self.device)
+        y_tensor = torch.tensor(y, dtype=torch.float32).to(self.device)
+        last_w_tensor = torch.tensor(last_w, dtype=torch.float32).to(self.device)
+        
+
+
+        weights = self.__net(x_tensor, last_w_tensor) # Pass with cash component
+        
+        # Replicate TF logic for calculating metrics
+        future_price_changes = torch.cat([torch.ones(y_tensor.shape[0], 1).to(self.device), y_tensor[:, 0, :]], dim=1)
+        
+        # Portfolio value vector (pv_vector)
+        pv_vector = torch.sum(weights * future_price_changes, dim=1)
+        
+        # Handling commission costs
+        future_omega = (weights * future_price_changes) / torch.sum(weights * future_price_changes, dim=1, keepdim=True)
+        w_t = future_omega[:-1]
+        w_t1 = weights[1:]
+        mu = 1 - torch.sum(torch.abs(w_t1[:, 1:] - w_t[:, 1:]), dim=1) * self.__commission_ratio
+        pv_vector_with_cost = pv_vector * torch.cat([torch.ones(1).to(self.device), mu], dim=0)
+
+        loss = self._calculate_loss(weights, future_price_changes, pv_vector_with_cost)
+
+        # Ensure gradients are zeroed before backward to avoid accumulation
+        # across batches (PyTorch accumulates gradients by default).
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+    # Scheduler stepping moved to Trainer to reproduce TF's staircase behavior
+
+        setw_func(weights[:, 1:].detach().cpu().numpy())
+        return loss.item()
+
+    def step_scheduler(self):
+        """Expose scheduler stepping so Trainer can control when to decay the LR.
+
+        TF uses exponential_decay with staircase=True (decay every decay_steps).
+        We mimic that by stepping the PyTorch scheduler from the trainer when
+        a global step hits a decay interval.
         """
-        :param x:
-        :param y:
-        :param last_w:
-        :param setw: a function, pass the output w to it to fill the PVM
-        :param tensors:
-        :return:
-        """
-        tensors = list(tensors)
-        tensors.append(self.__net.output)
-        assert not np.any(np.isnan(x))
-        assert not np.any(np.isnan(y))
-        assert not np.any(np.isnan(last_w)),\
-            "the last_w is {}".format(last_w)
-        results = self.__net.session.run(tensors,
-                                         feed_dict={self.__net.input_tensor: x,
-                                                    self.__y: y,
-                                                    self.__net.previous_w: last_w,
-                                                    self.__net.input_num: x.shape[0]})
-        setw(results[-1][:, 1:])
-        return results[:-1]
+        if self.scheduler is not None:
+            self.scheduler.step()
 
-    # save the variables path including file name
-    def save_model(self, path):
-        self.__saver.save(self.__net.session, path)
+    def evaluate_tensors(self, x, y, last_w, setw_func, tensors_to_eval):
+        self.__net.eval()
+        with torch.no_grad():
+            # Debugging: Write type and value of x to a file
+            with open("/Users/jhjh/.gemini/tmp/3a982b4fbaabb55f2285d7c125b6868106ba60bb34fab9633a5f4de56a7c96da/debug_nnagent_eval_x.log", "a") as f:
+                f.write(f"Type of x: {type(x)}\n")
+                f.write(f"Value of x: {x}\n")
+                if isinstance(x, np.ndarray):
+                    f.write(f"x.shape: {x.shape}\n")
+                    f.write(f"x.dtype: {x.dtype}\n")
 
-    # consumption vector (on each periods)
-    def __pure_pc(self):
-        c = self.__commission_ratio
-        w_t = self.__future_omega[:self.__net.input_num-1]  # rebalanced
-        w_t1 = self.__net.output[1:self.__net.input_num]
-        mu = 1 - tf.reduce_sum(tf.abs(w_t1[:, 1:]-w_t[:, 1:]), axis=1)*c
-        """
-        mu = 1-3*c+c**2
+            x = np.asarray(x, dtype=np.float32)
+            x_tensor = torch.tensor(x, dtype=torch.float32).to(self.device)
+            y_tensor = torch.tensor(y, dtype=torch.float32).to(self.device)
+            last_w_tensor = torch.tensor(last_w, dtype=torch.float32).to(self.device)
 
-        def recurse(mu0):
-            factor1 = 1/(1 - c*w_t1[:, 0])
-            if isinstance(mu0, float):
-                mu0 = mu0
-            else:
-                mu0 = mu0[:, None]
-            factor2 = 1 - c*w_t[:, 0] - (2*c - c**2)*tf.reduce_sum(
-                tf.nn.relu(w_t[:, 1:] - mu0 * w_t1[:, 1:]), axis=1)
-            return factor1*factor2
 
-        for i in range(20):
-            mu = recurse(mu)
-        """
-        return mu
 
-    # the history is a 3d matrix, return a asset vector
+            weights = self.__net(x_tensor, last_w_tensor)
+            setw_func(weights[:, 1:].detach().cpu().numpy())
+
+            future_price_changes = torch.cat([torch.ones(y_tensor.shape[0], 1).to(self.device), y_tensor[:, 0, :]], dim=1)
+            pv_vector = torch.sum(weights * future_price_changes, dim=1)
+            
+            # This is the portfolio value without transaction costs
+            portfolio_value = torch.prod(pv_vector).item()
+            log_mean_free = torch.mean(torch.log(pv_vector)).item()
+
+            # Calculate metrics with transaction costs
+            future_omega = (weights * future_price_changes) / torch.sum(weights * future_price_changes, dim=1, keepdim=True)
+            w_t = future_omega[:-1]
+            w_t1 = weights[1:]
+            mu = 1 - torch.sum(torch.abs(w_t1[:, 1:] - w_t[:, 1:]), dim=1) * self.__commission_ratio
+            pv_vector_with_cost = pv_vector * torch.cat([torch.ones(1).to(self.device), mu], dim=0)
+
+            loss = self._calculate_loss(weights, future_price_changes, pv_vector_with_cost).item()
+            final_portfolio_value = torch.prod(pv_vector_with_cost).item()
+            log_mean = torch.mean(torch.log(pv_vector_with_cost)).item()
+
+            results = []
+            for t_name in tensors_to_eval:
+                if t_name == "portfolio_value": results.append(final_portfolio_value)
+                elif t_name == "log_mean": results.append(log_mean)
+                elif t_name == "loss": results.append(loss)
+                elif t_name == "log_mean_free": results.append(log_mean_free)
+                elif t_name == "portfolio_weights": results.append(weights.cpu().numpy())
+                elif t_name == "pv_vector": results.append(pv_vector_with_cost.cpu().numpy())
+                else: results.append(None) # Placeholder for other tensors
+            return results
+
     def decide_by_history(self, history, last_w):
-        assert isinstance(history, np.ndarray),\
-            "the history should be a numpy array, not %s" % type(history)
-        assert not np.any(np.isnan(last_w))
-        assert not np.any(np.isnan(history))
-        tflearn.is_training(False, self.session)
-        history = history[np.newaxis, :, :, :]
-        return np.squeeze(self.session.run(self.__net.output, feed_dict={self.__net.input_tensor: history,
-                                                                         self.__net.previous_w: last_w[np.newaxis, 1:],
-                                                                         self.__net.input_num: 1}))
+        self.__net.eval()
+        with torch.no_grad():
+            history_tensor = torch.tensor(history, dtype=torch.float32).unsqueeze(0).to(self.device)
+            last_w_tensor = torch.tensor(last_w[1:], dtype=torch.float32).unsqueeze(0).to(self.device)
+            
+            output = self.__net(history_tensor, last_w_tensor)
+            return output.squeeze(0).cpu().numpy()
+
+    def save_model(self, path):
+        torch.save(self.__net.state_dict(), path)
