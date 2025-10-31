@@ -97,12 +97,6 @@ class NNAgent:
     def train(self, x, y, last_w, setw_func):
         self.__net.train()
         # Debugging: Write type and value of x to a file
-        with open("/Users/jhjh/.gemini/tmp/3a982b4fbaabb55f2285d7c125b6868106ba60bb34fab9633a5f4de56a7c96da/debug_nnagent_train_x.log", "a") as f:
-            f.write(f"Type of x: {type(x)}\n")
-            f.write(f"Value of x: {x}\n")
-            if isinstance(x, np.ndarray):
-                f.write(f"x.shape: {x.shape}\n")
-                f.write(f"x.dtype: {x.dtype}\n")
         
         x = np.asarray(x, dtype=np.float32)
         x_tensor = torch.tensor(x, dtype=torch.float32).to(self.device)
