@@ -162,7 +162,7 @@ class TraderTrainer:
         csv_dir = './train_package/train_summary.csv'
         if os.path.isfile(csv_dir):
             dataframe = pd.read_csv(csv_dir).set_index("net_dir")
-            dataframe = dataframe.append(new_data_frame)
+            dataframe = pd.concat([dataframe, new_data_frame])
         else:
             dataframe = new_data_frame
         

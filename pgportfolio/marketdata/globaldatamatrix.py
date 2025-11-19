@@ -80,40 +80,41 @@ class HistoryManager:
                     # NOTE: transform the start date to end date
                     if feature == "close":
                         sql = ("SELECT date+300 AS date_norm, close FROM History WHERE"
-                               " date_norm>={start} and date_norm<={end}"
-                               " and date_norm%{period}=0 and coin=\"{coin}\"".format(
-                               start=start, end=end, period=period, coin=coin))
+                               " date_norm>=? and date_norm<=?"
+                               " and date_norm%? = 0 and coin=?")
+                        params = (start, end, period, coin)
                     elif feature == "open":
-                        sql = ("SELECT date+{period} AS date_norm, open FROM History WHERE"
-                               " date_norm>={start} and date_norm<={end}"
-                               " and date_norm%{period}=0 and coin=\"{coin}\"".format(
-                               start=start, end=end, period=period, coin=coin))
+                        sql = ("SELECT date+? AS date_norm, open FROM History WHERE"
+                               " date_norm>=? and date_norm<=?"
+                               " and date_norm%? = 0 and coin=?")
+                        params = (period, start, end, period, coin)
                     elif feature == "volume":
                         sql = ("SELECT date_norm, SUM(volume)"+
-                               " FROM (SELECT date+{period}-(date%{period}) "
+                               " FROM (SELECT date+?-(date%?) "
                                "AS date_norm, volume, coin FROM History)"
-                               " WHERE date_norm>={start} and date_norm<={end} and coin=\"{coin}\""
-                               " GROUP BY date_norm".format(
-                                    period=period,start=start,end=end,coin=coin))
+                               " WHERE date_norm>=? and date_norm<=? and coin=?"
+                               " GROUP BY date_norm")
+                        params = (period, period, start, end, coin)
                     elif feature == "high":
                         sql = ("SELECT date_norm, MAX(high)" +
-                               " FROM (SELECT date+{period}-(date%{period})"
+                               " FROM (SELECT date+?-(date%?)"
                                " AS date_norm, high, coin FROM History)"
-                               " WHERE date_norm>={start} and date_norm<={end} and coin=\"{coin}\""
-                               " GROUP BY date_norm".format(
-                                    period=period,start=start,end=end,coin=coin))
+                               " WHERE date_norm>=? and date_norm<=? and coin=?"
+                               " GROUP BY date_norm")
+                        params = (period, period, start, end, coin)
                     elif feature == "low":
                         sql = ("SELECT date_norm, MIN(low)" +
-                                " FROM (SELECT date+{period}-(date%{period})"
+                                " FROM (SELECT date+?-(date%?)"
                                 " AS date_norm, low, coin FROM History)"
-                                " WHERE date_norm>={start} and date_norm<={end} and coin=\"{coin}\""
-                                " GROUP BY date_norm".format(
-                                    period=period,start=start,end=end,coin=coin))
+                                " WHERE date_norm>=? and date_norm<=? and coin=?"
+                                " GROUP BY date_norm")
+                        params = (period, period, start, end, coin)
                     else:
                         msg = ("The feature %s is not supported" % feature)
                         logging.error(msg)
                         raise ValueError(msg)
                     serial_data = pd.read_sql_query(sql, con=connection,\
+                                                    params=params,\
                                                     parse_dates=["date_norm"],\
                                                     index_col="date_norm").astype(np.float32)
                     panel.loc[serial_data.index, (feature, coin)] = serial_data.squeeze()

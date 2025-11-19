@@ -13,4 +13,5 @@ dependencies = [
     "tqdm>=4.62.0",
     "torch>=2.0.0",
     "scikit-learn>=1.0.0",
+    "seaborn>=0.13.2",
 ]

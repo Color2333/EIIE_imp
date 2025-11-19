@@ -107,3 +107,5 @@ train_package/
 .DS_Store
 .idea/
 *.db
+.spec-workflow/
+quick_grid_results/
