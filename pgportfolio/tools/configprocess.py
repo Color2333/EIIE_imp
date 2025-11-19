@@ -69,6 +69,11 @@ def fill_layers_default(layers):
             set_missing(layer, "weight_decay", 0.0)
         elif layer["type"] == "DropOut":
             pass
+        elif layer["type"] == "SelfAttentionHead":
+            set_missing(layer, "num_heads", 8)
+            set_missing(layer, "dropout", 0.1)
+            set_missing(layer, "feature_dim", None)
+            set_missing(layer, "activation_function", "relu")
         else:
             raise ValueError("layer name {} not supported".format(layer["type"]))
 
