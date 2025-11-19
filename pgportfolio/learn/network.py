@@ -5,6 +5,61 @@ import torch.nn.functional as F
 def allint(l):
     return [int(i) for i in l]
 
+class SqueezeExcitationLayer(nn.Module):
+    """
+    Implements a Squeeze-and-Excitation block for channel-wise attention.
+    It helps the network to learn the importance of different feature channels.
+    """
+    def __init__(self, in_channels, reduction_ratio=16):
+        super(SqueezeExcitationLayer, self).__init__()
+        self.squeeze = nn.AdaptiveAvgPool2d(1)
+        self.excitation = nn.Sequential(
+            nn.Linear(in_channels, in_channels // reduction_ratio, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(in_channels // reduction_ratio, in_channels, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.squeeze(x).view(b, c)
+        y = self.excitation(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)
+
+class ResidualBlock(nn.Module):
+    """
+    Implements a Residual Block. It adds a shortcut connection that allows
+    the gradient to flow more easily and helps in training deeper networks.
+    y = Activation(Conv(x) + shortcut(x))
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, device):
+        super(ResidualBlock, self).__init__()
+        self.conv = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding
+        ).to(device)
+        nn.init.xavier_uniform_(self.conv.weight)
+        if self.conv.bias is not None:
+            nn.init.constant_(self.conv.bias, 0.0)
+
+        self.shortcut = nn.Sequential()
+        is_stride_one = isinstance(stride, int) and stride == 1 or \
+                        isinstance(stride, (list, tuple)) and all(s == 1 for s in stride)
+
+        if not is_stride_one or in_channels != out_channels:
+            # Use a 1x1 convolution to match dimensions if they differ
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False)
+            ).to(device)
+            nn.init.xavier_uniform_(self.shortcut[0].weight)
+
+    def forward(self, x):
+        # Activation is applied *after* this forward pass in the parent CNN module's loop
+        return self.conv(x) + self.shortcut(x)
+
 class NeuralNetWork(nn.Module):
     def __init__(self, feature_number, rows, columns, layers, device):
         super(NeuralNetWork, self).__init__()
@@ -61,16 +116,27 @@ class CNN(NeuralNetWork):
                     except ValueError:
                         pass # Default to 0 if invalid
 
-                current_module = nn.Conv2d(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    padding=padding
-                ).to(self.device)
-                nn.init.xavier_uniform_(current_module.weight)
-                if current_module.bias is not None:
-                    nn.init.constant_(current_module.bias, 0.0)
+                is_residual = layer_conf.get("residual", False)
+                if is_residual:
+                    current_module = ResidualBlock(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        kernel_size=kernel_size,
+                        stride=stride,
+                        padding=padding,
+                        device=self.device
+                    )
+                else:
+                    current_module = nn.Conv2d(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        kernel_size=kernel_size,
+                        stride=stride,
+                        padding=padding
+                    ).to(self.device)
+                    nn.init.xavier_uniform_(current_module.weight)
+                    if current_module.bias is not None:
+                        nn.init.constant_(current_module.bias, 0.0)
                 
                 network_shape_tracker = current_module(network_shape_tracker)
 
@@ -102,6 +168,15 @@ class CNN(NeuralNetWork):
                 if current_module.bias is not None:
                     nn.init.constant_(current_module.bias, 0.0)
                 
+                network_shape_tracker = current_module(network_shape_tracker)
+            
+            elif layer_type == "AttentionLayer":
+                in_channels = network_shape_tracker.shape[1]
+                reduction_ratio = int(layer_conf.get("reduction_ratio", 16))
+                current_module = SqueezeExcitationLayer(
+                    in_channels=in_channels,
+                    reduction_ratio=reduction_ratio
+                ).to(self.device)
                 network_shape_tracker = current_module(network_shape_tracker)
 
             elif layer_type == "DropOut":

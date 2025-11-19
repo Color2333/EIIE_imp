@@ -365,10 +365,46 @@ class ResidualBlock(nn.Module):
         return x + residual
 ```
 
-#### Week 3: 模型集成和测试
-- 单元测试
-- 与原有训练框架集成
-- 性能基准测试
+#### 新模块及其配置说明
+
+为了增强网络的性能和泛化能力，我们引入了残差连接和注意力机制。这些模块已集成到 `pgportfolio/learn/network.py` 中，并通过 `net_config.json` 进行配置。
+
+##### 1. 残差块 (ResidualBlock)
+
+-   **功能**: 有助于缓解深层网络中的梯度消失问题，使网络更容易训练，并能提升泛化能力。
+-   **实现**: 在 `network.py` 中定义为 `ResidualBlock` 类。它将一个 `ConvLayer` 包装起来，并添加了跳跃连接 (`shortcut`)。如果输入和输出的通道数或步长不一致，会自动使用1x1卷积调整维度。激活函数由外部 `CNN` 模块在 `ResidualBlock` 的输出之后应用。
+-   **配置示例 (`net_config.json`)**:
+    要将一个 `ConvLayer` 配置为残差块，只需在其配置中添加 `"residual": true` 字段。例如：
+    ```json
+    {
+      "type": "ConvLayer",
+      "filter_shape": [1, 3],
+      "filter_number": 32,
+      "residual": true,
+      "activation_function": "relu",
+      "padding": "same"
+    }
+    ```
+    -   `"residual": true`: 开启残差连接。
+    -   `"activation_function"`: 残差块的输出之后应用的激活函数。
+    -   其他参数与普通 `ConvLayer` 相同。
+
+##### 2. 注意力层 (AttentionLayer / SqueezeExcitationLayer)
+
+-   **功能**: 引入通道注意力机制（如 Squeeze-and-Excitation 模块），让网络自动学习哪些特征通道对预测更重要，提高模型的解释性和性能。
+-   **实现**: 在 `network.py` 中定义为 `SqueezeExcitationLayer` 类。它通过“挤压”（全局平均池化）和“激励”（两个全连接层）操作，为每个通道生成一个权重，然后将其乘回原始特征图。
+-   **配置示例 (`net_config.json`)**:
+    作为独立的层添加到 `layers` 数组中。
+    ```json
+    {
+      "type": "AttentionLayer",
+      "reduction_ratio": 4
+    }
+    ```
+    -   `"type": "AttentionLayer"`: 指定为注意力层。
+    -   `"reduction_ratio"`: 激励模块中第一个全连接层的缩减比例（默认为16）。较小的比例（如4或8）可以减少参数量，同时可能保持良好性能。
+
+通过在 `net_config.json` 中灵活配置这些模块，您可以轻松实验不同的网络结构，以找到最佳的模型组合。
 
 ### Phase 2: 特征工程增强 (1-2周)
 

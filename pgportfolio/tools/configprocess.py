@@ -69,6 +69,8 @@ def fill_layers_default(layers):
             set_missing(layer, "weight_decay", 0.0)
         elif layer["type"] == "DropOut":
             pass
+        elif layer["type"] == "AttentionLayer":
+            pass
         elif layer["type"] == "SelfAttentionHead":
             set_missing(layer, "num_heads", 8)
             set_missing(layer, "dropout", 0.1)
