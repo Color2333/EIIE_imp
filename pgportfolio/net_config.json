@@ -1,59 +1,47 @@
 {
-  "layers":
-  [
-    {
-      "type": "ConvLayer",
-      "filter_shape": [1, 3],
-      "filter_number": 32,
-      "residual": true,
-      "activation_function": "relu",
-      "padding": "same"
+    "agent_type": "TransformerAgent",
+    "input": {
+        "coin_number": 11,
+        "end_date": "2017/07/01",
+        "feature_number": 3,
+        "global_period": 1800,
+        "is_permed": false,
+        "market": "poloniex",
+        "norm_method": "absolute",
+        "online": false,
+        "portion_reversed": false,
+        "save_memory_mode": false,
+        "start_date": "2015/07/01",
+        "test_portion": 0.08,
+        "volume_average_days": 30,
+        "window_size": 31
     },
-    {
-      "type": "AttentionLayer",
-      "reduction_ratio": 4
+    "layers": [],
+    "transformer_config": {
+        "d_model": 32,
+        "nhead": 8,
+        "num_encoder_layers": 2,
+        "dim_feedforward": 128,
+        "dropout": 0.1
     },
-    {
-      "filter_number":10,
-      "type": "EIIE_Dense",
-      "regularizer": "L2",
-      "weight_decay": 5e-9,
-      "activation_function": "relu"
+    "random_seed": 0,
+    "trading": {
+        "buffer_biased": 5e-05,
+        "learning_rate": 0.0002,
+        "rolling_training_steps": 85,
+        "trading_consumption": 0.0025
     },
-    {
-      "type": "EIIE_Output_WithW",
-      "regularizer": "L2",
-      "weight_decay": 5e-8
+    "training": {
+        "batch_size": 64,
+        "buffer_biased": 5e-05,
+        "decay_rate": 0.95,
+        "decay_steps": 50000,
+        "fast_train": true,
+        "learning_rate": 0.0001,
+        "loss_function": "loss_function6",
+        "snap_shot": true,
+        "steps": 80000,
+        "training_method": "Adam",
+        "weight_decay": 1e-5
     }
-  ],
-  "training":{
-    "steps":80000,
-    "learning_rate":0.00028,
-    "batch_size":109,
-    "buffer_biased":5e-5,
-    "snap_shot":false,
-    "fast_train":true,
-    "training_method":"Adam",
-    "loss_function":"loss_function6"
-  },
-
-  "input":{
-    "window_size":31,
-    "coin_number":11,
-    "global_period":1800,
-    "feature_number":3,
-    "test_portion":0.08,
-    "online":false,
-    "start_date":"2015/07/01",
-    "end_date":"2017/07/01",
-    "volume_average_days":30,
-    "portion_reversed": false
-  },
-
-  "trading":{
-    "trading_consumption":0.0025,
-    "rolling_training_steps":0,
-    "learning_rate":0.00028,
-    "buffer_biased":5e-5
-  }
 }
