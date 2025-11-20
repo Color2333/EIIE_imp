@@ -110,3 +110,5 @@ train_package/
 .spec-workflow/
 quick_grid_results/
 .wheels/torch-2.5.1+cu121-cp311-cp311-win_amd64.whl
+.result.eps                                              
+
