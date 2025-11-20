@@ -1,5 +1,5 @@
 {
-    "agent_type": "ImprovedTransformerAgent",
+    "agent_type": "TransformerAgent",
     "input": {
         "coin_number": 11,
         "end_date": "2017/07/01",
@@ -16,25 +16,13 @@
         "volume_average_days": 30,
         "window_size": 31
     },
-    "layers": [
-        {
-            "type": "EIIE_Output_WithW",
-            "weight_decay": 1e-5
-        }
-    ],
+    "layers": [],
     "transformer_config": {
-        "d_model": 128,
+        "d_model": 32,
         "nhead": 8,
-        "num_encoder_layers": 4,
-        "dim_feedforward": 512,
-        "dropout": 0.1,
-        "activation": "gelu",
-        "use_asset_attention": true,
-        "use_market_context": true,
-        "pooling_method": "attention",
-        "pos_encoding_type": "learnable",
-        "context_dimensions": 4,
-        "residual_connection": true
+        "num_encoder_layers": 2,
+        "dim_feedforward": 128,
+        "dropout": 0.1
     },
     "random_seed": 0,
     "trading": {

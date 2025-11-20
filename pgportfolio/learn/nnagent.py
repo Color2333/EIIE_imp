@@ -2,7 +2,8 @@ import torch
 import torch.optim as optim
 import numpy as np
 from pgportfolio.constants import LAMBDA
-import pgportfolio.learn.network as network
+from pgportfolio.learn.network import CNN, CNNLSTM, PureTransformerNet
+from pgportfolio.learn.improved_transformer import ImprovedTransformerNet
 
 class NNAgent:
     def __init__(self, config, restore_path=None, device="cpu"):
@@ -10,18 +11,51 @@ class NNAgent:
         self.__coin_number = config["input"]["coin_number"]
         self.device = torch.device(device)
         
-        # Pass rows = coin_number + 1 to include the cash asset as the first row
-        # Keep rows equal to coin_number to match the TF implementation
-        # (TF's network internally handles the cash/btc bias column). This
-        # prevents a mismatch between previous_w shapes (assets-only) used
-        # by the training loop and the network expectation.
-        self.__net = network.CNN(
-            config["input"]["feature_number"],
-            self.__coin_number,
-            config["input"]["window_size"],
-            config["layers"],
-            device=device
-        ).to(self.device)
+        agent_type = self.__config.get("agent_type", "NNAgent")
+        layers = self.__config.get("layers", [])
+        feature_number = self.__config["input"]["feature_number"]
+        window_size = self.__config["input"]["window_size"]
+
+        if agent_type == "NNAgent":
+            self.__net = CNN(
+                feature_number,
+                self.__coin_number,
+                window_size,
+                layers,
+                device=device
+            ).to(self.device)
+        elif agent_type == "CNNLSTMAgent":
+            lstm_config = self.__config.get("lstm_config", {})
+            self.__net = CNNLSTM(
+                feature_number,
+                self.__coin_number,
+                window_size,
+                layers,
+                device=device,
+                lstm_config=lstm_config
+            ).to(self.device)
+        elif agent_type == "TransformerAgent":
+            transformer_config = self.__config.get("transformer_config", {})
+            self.__net = PureTransformerNet(
+                feature_number,
+                self.__coin_number,
+                window_size,
+                layers,
+                device=device,
+                transformer_config=transformer_config
+            ).to(self.device)
+        elif agent_type == "ImprovedTransformerAgent":
+            transformer_config = self.__config.get("transformer_config", {})
+            self.__net = ImprovedTransformerNet(
+                feature_number,
+                self.__coin_number,
+                window_size,
+                layers,
+                device=device,
+                transformer_config=transformer_config
+            ).to(self.device)
+        else:
+            raise ValueError(f"Unsupported agent_type: {agent_type}")
 
         self.__commission_ratio = self.__config["trading"]["trading_consumption"]
         self.regularization_strength = config["training"].get("regularization_strength", 0.0)
