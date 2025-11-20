@@ -3,7 +3,6 @@ import torch.optim as optim
 import numpy as np
 from pgportfolio.constants import LAMBDA
 from pgportfolio.learn.network import CNN, CNNLSTM, PureTransformerNet
-from pgportfolio.learn.improved_transformer import ImprovedTransformerNet
 
 class NNAgent:
     def __init__(self, config, restore_path=None, device="cpu"):
@@ -37,16 +36,6 @@ class NNAgent:
         elif agent_type == "TransformerAgent":
             transformer_config = self.__config.get("transformer_config", {})
             self.__net = PureTransformerNet(
-                feature_number,
-                self.__coin_number,
-                window_size,
-                layers,
-                device=device,
-                transformer_config=transformer_config
-            ).to(self.device)
-        elif agent_type == "ImprovedTransformerAgent":
-            transformer_config = self.__config.get("transformer_config", {})
-            self.__net = ImprovedTransformerNet(
                 feature_number,
                 self.__coin_number,
                 window_size,
