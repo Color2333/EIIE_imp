@@ -2,11 +2,17 @@
 # -*- coding: utf-8 -*-
 from os import path
 
-DATABASE_DIR = path.realpath(__file__).\
-    replace('pgportfolio/constants.pyc','/database/Data.db').\
-    replace("pgportfolio\\constants.pyc","database\\Data.db").\
-    replace('pgportfolio/constants.py','/database/Data.db').\
-    replace("pgportfolio\\constants.py","database\\Data.db")
+# 导入数据库配置
+try:
+    from .database_config import get_database_path
+    DATABASE_DIR = get_database_path()
+except ImportError:
+    # 如果数据库配置不可用，回退到默认数据库
+    DATABASE_DIR = path.realpath(__file__).\
+        replace('pgportfolio/constants.pyc','/database/Data.db').\
+        replace("pgportfolio\\constants.pyc","database\\Data.db").\
+        replace('pgportfolio/constants.py','/database/Data.db').\
+        replace("pgportfolio\\constants.py","database\\Data.db")
 CONFIG_FILE_DIR = 'net_config.json'
 LAMBDA = 1e-4  # lambda in loss function 5 in training
    # About time

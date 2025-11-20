@@ -110,3 +110,12 @@ train_package/
 .spec-workflow/
 quick_grid_results/
 .wheels/torch-2.5.1+cu121-cp311-cp311-win_amd64.whl
+coin_price_charts/coin_prices_normalized.png
+coin_price_charts/coin_prices_original.png
+
+individual_coin_charts
+individual_coin_charts_1
+individual_coin_charts_6
+individual_coin_charts_9
+individual_coin_charts_13
+coin_price_charts
