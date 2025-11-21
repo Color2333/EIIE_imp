@@ -79,10 +79,10 @@ class HistoryManager:
                 for feature in features:
                     # NOTE: transform the start date to end date
                     if feature == "close":
-                        sql = ("SELECT date+300 AS date_norm, close FROM History WHERE"
+                        sql = ("SELECT date+? AS date_norm, close FROM History WHERE"
                                " date_norm>=? and date_norm<=?"
                                " and date_norm%? = 0 and coin=?")
-                        params = (start, end, period, coin)
+                        params = (period, start, end, period, coin)
                     elif feature == "open":
                         sql = ("SELECT date+? AS date_norm, open FROM History WHERE"
                                " date_norm>=? and date_norm<=?"
