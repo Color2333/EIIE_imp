@@ -15,21 +15,33 @@ class DatabaseConfig:
     def __init__(self):
         self.config_file = "database_config.json"
         self.default_config = {
-            "current_database": "data",
+            "current_database": "datanew",
             "databases": {
                 "data": {
                     "name": "Original Database (2015-2017)",
                     "file": "database/Data.db",
                     "description": "Original PGPortfolio database with 2015-2017 data",
                     "coins": ["DASH", "ETC", "ETH", "FCT", "GNT", "LTC", "XEM", "XMR", "XRP", "ZEC", "reversed_USDT"],
-                    "time_range": "2015-07-01 to 2017-07-01"
+                    "time_range": "2015-07-01 to 2017-07-01",
+                    "interval": "5m"
                 },
                 "data2": {
                     "name": "Modern Database (2022-2024)",
                     "file": "database/Data2.db",
                     "description": "Updated database with 2022-2024 modern cryptocurrency data",
                     "coins": ["ADA", "AVAX", "BNB", "DOGE", "DOT", "ETH", "LINK", "LTC", "SOL", "XRP", "reversed_USDT"],
-                    "time_range": "2022-01-01 to 2024-12-31"
+                    "time_range": "2022-01-01 to 2024-12-31",
+                    "interval": "30m"
+                },
+                "datanew": {
+                    "name": "New Binance Database (2022-2025)",
+                    "file": "database/DataNew.db",
+                    "description": "New database with 2022-2025 data from Binance API",
+                    "coins": ["ETH", "BNB", "SOL", "AVAX", "DOT", "LINK", "ADA", "DOGE", "LTC", "XRP", "MATIC", "ATOM", "FTM", "SAND", "reversed_USDT"],
+                    "time_range": "2022-01-01 to 2025-01-01",
+                    "interval": "5m",
+                    "data_source": "Binance API",
+                    "base_currency": "BTC"
                 }
             }
         }

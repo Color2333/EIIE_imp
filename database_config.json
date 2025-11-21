@@ -1,5 +1,5 @@
 {
-  "current_database": "data2",
+  "current_database": "datanew",
   "databases": {
     "data": {
       "name": "Original Database (2015-2017)",
@@ -38,6 +38,31 @@
         "reversed_USDT"
       ],
       "time_range": "2022-01-01 to 2024-12-31"
+    },
+    "datanew": {
+      "name": "New Binance Database (2022-2025)",
+      "file": "database/DataNew.db",
+      "description": "New Binance Database with 2022-2025 data",
+      "coins": [
+        "ETH", 
+        "BNB", 
+        "SOL", 
+        "AVAX", 
+        "DOT", 
+        "ADA", 
+        "ATOM",
+        "LINK", 
+        "MATIC",
+        "LTC", 
+        "XRP", 
+        "DOGE",
+        "FTM", 
+        "SAND", 
+        "reversed_USDT"
+      ],
+      "time_range": "2022-01-01 to 2025-01-01",
+      "interval": "5m",
+      "data_source": "Binance API"
     }
   }
 }

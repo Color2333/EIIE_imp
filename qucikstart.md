@@ -264,7 +264,8 @@ python main.py --mode=generate --repeat=3
 python main.py --mode=train --processes=1 --device=cuda
 
 # 5. 回测模型
-python main.py --mode=backtest --algo=1
+
+
 
 # 6. 对比结果
 python main.py --mode=plot --algos=crp,olmar,1,2,3 --labels="CRP,OLMAR,模型1,模型2,模型3"
